@@ -653,6 +653,33 @@
       font-weight: 800;
     }
 
+    .cloud-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      margin-top: 10px;
+      padding: 8px 11px;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .cloud-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      background: #a8a8a8;
+      border-radius: 50%;
+    }
+
+    .cloud-status.online::before { background: #0b7f43; }
+    .cloud-status.local::before { background: var(--sun); }
+    .cloud-status.error::before { background: #c13515; }
+
     .footer {
       margin: 54px clamp(18px, 5vw, 64px) 0;
       padding-top: 24px;
@@ -733,6 +760,7 @@
         <div>
           <h2>每日 Schedule</h2>
           <p class="subtle">点击日历格查看当天详情，地图和路线会同步切换。</p>
+          <div class="cloud-status local" id="cloudStatus">本地模式</div>
         </div>
       </div>
       <div class="calendar-shell">
@@ -838,13 +866,17 @@
   </main>
 
   <footer class="footer">
-    Hawaii Homebase · 数据保存在本机浏览器 localStorage；换浏览器或清缓存前请先导出重要内容。
+    Hawaii Homebase · 连接 Supabase 后，照片、备注和账本会在同一个访问码下云端同步。
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const gateHash = "c5cc15b6430ca720613daef384c58149870660959a4ecbb76ba3b55ba02ad77e";
     const gateKey = "hawaiiGateUnlocked";
+    const SUPABASE_URL = "https://bodedxvxlrdgaiqjwdtp.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_dHu0mxZv1mEg1nobJLb05A_TqEoFm6K";
+    const PHOTO_BUCKET = "hawaii-trip-photos";
 
     async function sha256(text) {
       const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -1029,6 +1061,8 @@
     let map;
     let markers = {};
     let activeLine;
+    let cloud = null;
+    let cloudReady = false;
 
     const qs = (id) => document.getElementById(id);
     const money = (value) => `$${Number(value).toFixed(2)}`;
@@ -1036,16 +1070,109 @@
     const uid = () => window.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const splitPeople = ["Person 1", "Person 2"];
 
-    function init() {
+    async function init() {
       renderDayControls();
       populateDateSelects();
       renderDayDetail();
       initMap();
       renderRoutes();
+      configureCloud();
+      await loadCloudData();
       renderPhotos();
       renderExpenses();
       renderNotes();
       wireEvents();
+      subscribeCloud();
+    }
+
+    function setCloudStatus(mode, text) {
+      const el = qs("cloudStatus");
+      if (!el) return;
+      el.className = `cloud-status ${mode}`;
+      el.textContent = text;
+    }
+
+    function configureCloud() {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !window.supabase) {
+        setCloudStatus("local", "本地模式：等待 Supabase 配置");
+        return;
+      }
+      cloud = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      cloudReady = true;
+      setCloudStatus("online", "云同步连接中");
+    }
+
+    function cacheCurrentData() {
+      store.set("hawaiiExpenses", expenses);
+      store.set("hawaiiPhotos", photos);
+      store.set("hawaiiNotes", notes);
+    }
+
+    function groupPhotos(rows) {
+      return rows.reduce((grouped, row) => {
+        grouped[row.day_id] ||= [];
+        grouped[row.day_id].push({
+          id: row.id,
+          name: row.name,
+          data: row.public_url,
+          path: row.path
+        });
+        return grouped;
+      }, {});
+    }
+
+    async function loadCloudData() {
+      if (!cloudReady) return;
+      try {
+        const [expenseResult, photoResult, noteResult] = await Promise.all([
+          cloud.from("trip_expenses").select("id, day_id, description, amount, created_at").eq("trip_key", gateHash).order("created_at", { ascending: true }),
+          cloud.from("trip_photos").select("id, day_id, name, path, public_url, created_at").eq("trip_key", gateHash).order("created_at", { ascending: true }),
+          cloud.from("trip_notes").select("day_id, content").eq("trip_key", gateHash)
+        ]);
+        const error = expenseResult.error || photoResult.error || noteResult.error;
+        if (error) throw error;
+
+        expenses = (expenseResult.data || []).map((row) => ({
+          id: row.id,
+          date: row.day_id,
+          desc: row.description,
+          amount: Number(row.amount)
+        }));
+        photos = groupPhotos(photoResult.data || []);
+        notes = Object.fromEntries((noteResult.data || []).map((row) => [row.day_id, row.content || ""]));
+        cacheCurrentData();
+        setCloudStatus("online", "云同步已连接");
+      } catch (error) {
+        console.error(error);
+        cloudReady = false;
+        setCloudStatus("error", "云同步连接失败，暂用本地模式");
+      }
+    }
+
+    function refreshFromCloud() {
+      clearTimeout(window.cloudRefreshTimer);
+      window.cloudRefreshTimer = setTimeout(async () => {
+        await loadCloudData();
+        renderPhotos();
+        renderExpenses();
+        renderNotes();
+      }, 250);
+    }
+
+    function subscribeCloud() {
+      if (!cloudReady) return;
+      cloud
+        .channel("hawaii-trip-cloud-sync")
+        .on("postgres_changes", { event: "*", schema: "public", table: "trip_expenses", filter: `trip_key=eq.${gateHash}` }, refreshFromCloud)
+        .on("postgres_changes", { event: "*", schema: "public", table: "trip_photos", filter: `trip_key=eq.${gateHash}` }, refreshFromCloud)
+        .on("postgres_changes", { event: "*", schema: "public", table: "trip_notes", filter: `trip_key=eq.${gateHash}` }, refreshFromCloud)
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") setCloudStatus("online", "云同步实时在线");
+        });
+    }
+
+    function safeFileName(name) {
+      return name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-90);
     }
 
     function renderDayControls() {
@@ -1191,9 +1318,18 @@
       `).join("");
       qs("photoEmpty").style.display = list.length ? "none" : "grid";
       document.querySelectorAll("[data-photo-delete]").forEach((button) => {
-        button.addEventListener("click", () => {
-          photos[date] = (photos[date] || []).filter((photo) => photo.id !== button.dataset.photoDelete);
-          store.set("hawaiiPhotos", photos);
+        button.addEventListener("click", async () => {
+          const photo = (photos[date] || []).find((item) => item.id === button.dataset.photoDelete);
+          if (cloudReady && photo) {
+            const { error: rowError } = await cloud.from("trip_photos").delete().eq("id", photo.id).eq("trip_key", gateHash);
+            if (rowError) {
+              alert(`照片删除失败：${rowError.message}`);
+              return;
+            }
+            if (photo.path) await cloud.storage.from(PHOTO_BUCKET).remove([photo.path]);
+          }
+          photos[date] = (photos[date] || []).filter((item) => item.id !== button.dataset.photoDelete);
+          cacheCurrentData();
           renderPhotos();
         });
       });
@@ -1233,9 +1369,16 @@
       }).join("") || '<div class="empty-state">还没有消费记录。</div>';
 
       document.querySelectorAll("[data-expense-delete]").forEach((button) => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", async () => {
+          if (cloudReady) {
+            const { error } = await cloud.from("trip_expenses").delete().eq("id", button.dataset.expenseDelete).eq("trip_key", gateHash);
+            if (error) {
+              alert(`消费删除失败：${error.message}`);
+              return;
+            }
+          }
           expenses = expenses.filter((expense) => expense.id !== button.dataset.expenseDelete);
-          store.set("hawaiiExpenses", expenses);
+          cacheCurrentData();
           renderExpenses();
         });
       });
@@ -1252,35 +1395,73 @@
       qs("photoInput").addEventListener("change", async (event) => {
         const date = qs("photoDate").value;
         const files = Array.from(event.target.files || []);
-        const reads = files.map((file) => new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve({ id: uid(), name: file.name, data: reader.result });
-          reader.readAsDataURL(file);
-        }));
-        photos[date] = [...(photos[date] || []), ...(await Promise.all(reads))];
-        try {
-          store.set("hawaiiPhotos", photos);
-        } catch {
-          alert("浏览器本地空间不够了。请删除一些照片，或只上传压缩后的图片。");
+        if (cloudReady) {
+          for (const file of files) {
+            const path = `${gateHash}/${date}/${Date.now()}-${uid()}-${safeFileName(file.name)}`;
+            const { error: uploadError } = await cloud.storage.from(PHOTO_BUCKET).upload(path, file, {
+              cacheControl: "3600",
+              upsert: false
+            });
+            if (uploadError) {
+              alert(`照片上传失败：${uploadError.message}`);
+              continue;
+            }
+            const { data } = cloud.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+            const { error: rowError } = await cloud.from("trip_photos").insert({
+              trip_key: gateHash,
+              day_id: date,
+              name: file.name,
+              path,
+              public_url: data.publicUrl
+            });
+            if (rowError) alert(`照片记录保存失败：${rowError.message}`);
+          }
+          await loadCloudData();
+        } else {
+          const reads = files.map((file) => new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({ id: uid(), name: file.name, data: reader.result });
+            reader.readAsDataURL(file);
+          }));
+          photos[date] = [...(photos[date] || []), ...(await Promise.all(reads))];
+          try {
+            cacheCurrentData();
+          } catch {
+            alert("浏览器本地空间不够了。请删除一些照片，或只上传压缩后的图片。");
+          }
         }
         event.target.value = "";
         renderPhotos();
       });
 
-      qs("addExpense").addEventListener("click", () => {
+      qs("addExpense").addEventListener("click", async () => {
         const desc = qs("expenseDesc").value.trim();
         const amount = Number(qs("expenseAmount").value);
         if (!desc || !amount || amount <= 0) {
           alert("请填写日期、内容和金额。");
           return;
         }
-        expenses.push({
+        const expense = {
           id: uid(),
           date: qs("expenseDate").value,
           desc,
           amount
-        });
-        store.set("hawaiiExpenses", expenses);
+        };
+        if (cloudReady) {
+          const { data, error } = await cloud.from("trip_expenses").insert({
+            trip_key: gateHash,
+            day_id: expense.date,
+            description: expense.desc,
+            amount: expense.amount
+          }).select("id").single();
+          if (error) {
+            alert(`消费保存失败：${error.message}`);
+            return;
+          }
+          expense.id = data.id;
+        }
+        expenses.push(expense);
+        cacheCurrentData();
         qs("expenseDesc").value = "";
         qs("expenseAmount").value = "";
         renderExpenses();
@@ -1290,10 +1471,22 @@
       qs("notesText").addEventListener("input", () => {
         const date = qs("notesDate").value;
         notes[date] = qs("notesText").value;
-        store.set("hawaiiNotes", notes);
-        qs("notesStatus").textContent = "已自动保存";
+        cacheCurrentData();
+        qs("notesStatus").textContent = cloudReady ? "正在保存到云端" : "已自动保存到本地";
         clearTimeout(window.notesTimer);
-        window.notesTimer = setTimeout(() => qs("notesStatus").textContent = "继续编辑会自动保存", 1500);
+        clearTimeout(window.notesSaveTimer);
+        window.notesSaveTimer = setTimeout(async () => {
+          if (cloudReady) {
+            const { error } = await cloud.from("trip_notes").upsert({
+              trip_key: gateHash,
+              day_id: date,
+              content: notes[date] || "",
+              updated_at: new Date().toISOString()
+            }, { onConflict: "trip_key,day_id" });
+            qs("notesStatus").textContent = error ? `云端保存失败：${error.message}` : "已自动保存到云端";
+          }
+        }, 450);
+        window.notesTimer = setTimeout(() => qs("notesStatus").textContent = "继续编辑会自动保存", 1800);
       });
     }
 
