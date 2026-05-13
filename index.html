@@ -1,0 +1,1303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hawaii 2026 Trip Tracker</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --bg: #fffaf5;
+      --surface: #ffffff;
+      --ink: #222222;
+      --muted: #717171;
+      --line: #ebebeb;
+      --brand: #ff7a1a;
+      --brand-dark: #c45100;
+      --teal: #008489;
+      --sand: #fff1e5;
+      --sun: #ffb400;
+      --shadow: 0 18px 45px rgba(0, 0, 0, .10);
+      --soft-shadow: 0 8px 26px rgba(0, 0, 0, .08);
+      --radius: 22px;
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    body.locked {
+      overflow: hidden;
+    }
+
+    body.locked main,
+    body.locked footer {
+      filter: blur(10px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    a { color: inherit; }
+
+    .gate {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(255, 250, 245, .78);
+      backdrop-filter: blur(16px);
+    }
+
+    body.locked .gate {
+      display: grid;
+    }
+
+    .gate-card {
+      width: min(420px, 100%);
+      padding: 26px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .gate-card h2 {
+      margin-bottom: 8px;
+      font-size: 30px;
+    }
+
+    .gate-card p {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+
+    .gate-actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    .gate-error {
+      min-height: 20px;
+      color: #c13515;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 20px;
+      padding: 18px clamp(18px, 5vw, 64px);
+      background: rgba(255, 250, 245, .9);
+      border-bottom: 1px solid rgba(235, 235, 235, .85);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--brand);
+      font-weight: 800;
+      letter-spacing: 0;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+      border-radius: 50%;
+      box-shadow: 0 8px 18px rgba(255, 122, 26, .26);
+    }
+
+    .search-pill {
+      display: inline-flex;
+      align-items: center;
+      min-width: min(520px, 45vw);
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+    }
+
+    .search-pill span {
+      padding: 14px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      border-right: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    .search-pill span:last-of-type {
+      color: var(--muted);
+      font-weight: 600;
+      border-right: 0;
+    }
+
+    .search-dot {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      margin-right: 8px;
+      place-items: center;
+      color: #fff;
+      background: var(--brand);
+      border-radius: 50%;
+    }
+
+    .quick-nav {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .quick-nav a {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 999px;
+    }
+
+    .quick-nav a:hover { background: #f2f2f2; color: var(--ink); }
+
+    main { padding-bottom: 54px; }
+
+    .title-line {
+      padding: 42px clamp(18px, 5vw, 64px) 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(42px, 8vw, 92px);
+      line-height: .95;
+      letter-spacing: 0;
+    }
+
+    .section {
+      padding: 46px clamp(18px, 5vw, 64px) 0;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .subtle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 4px 0 18px;
+      scrollbar-width: none;
+    }
+
+    .chip-row::-webkit-scrollbar { display: none; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 15px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, .04);
+    }
+
+    .chip.active {
+      color: #fff;
+      background: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .calendar-shell {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .calendar-month {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 2px 4px 10px;
+    }
+
+    .calendar-month strong {
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .calendar-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .day-list {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .day-card {
+      position: relative;
+      min-height: 128px;
+      padding: 12px;
+      text-align: left;
+      background: var(--surface);
+      border-radius: 0;
+      box-shadow: none;
+      transition: background .18s ease, box-shadow .18s ease;
+    }
+
+    .day-card:hover {
+      background: #fff9f2;
+    }
+
+    .day-card.active {
+      z-index: 1;
+      box-shadow: inset 0 0 0 3px var(--brand);
+    }
+
+    .day-card .date {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .day-card h3 {
+      margin: 0;
+      font-size: 0;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .day-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      width: fit-content;
+      margin-top: 42px;
+      padding: 6px 9px;
+      color: var(--brand-dark);
+      background: #fff1e5;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .calendar-detail {
+      margin-top: 18px;
+    }
+
+    .panel {
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .sticky-panel {
+      position: sticky;
+      top: 96px;
+    }
+
+    .detail-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .detail-title h3 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .mini-stat {
+      min-width: 92px;
+      padding: 10px;
+      text-align: center;
+      background: var(--sand);
+      border-radius: 16px;
+    }
+
+    .mini-stat strong {
+      display: block;
+      color: var(--brand-dark);
+      font-size: 18px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .timeline li {
+      display: grid;
+      grid-template-columns: 74px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 13px;
+      background: #fafafa;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    .time {
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .timeline b { display: block; margin-bottom: 3px; }
+    .timeline span { color: var(--muted); font-size: 14px; }
+
+    .map-layout {
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr);
+    }
+
+    #tripMap {
+      min-height: 720px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--soft-shadow);
+      background: #e9f5f3;
+    }
+
+    .route-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .route-card {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px;
+      text-decoration: none;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .04);
+    }
+
+    .route-icon {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      color: #fff;
+      background: var(--teal);
+      border-radius: 50%;
+    }
+
+    .route-card strong { display: block; }
+    .route-card span { color: var(--muted); font-size: 13px; }
+    .route-card small { color: var(--brand); font-weight: 900; }
+
+    .tools-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      min-height: 44px;
+      padding: 11px 13px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      outline: 0;
+    }
+
+    textarea {
+      min-height: 182px;
+      resize: vertical;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(255, 122, 26, .72);
+      box-shadow: 0 0 0 4px rgba(255, 122, 26, .12);
+    }
+
+    .primary-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+      border-radius: 14px;
+      font-weight: 900;
+      box-shadow: 0 10px 20px rgba(255, 122, 26, .22);
+    }
+
+    .ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 12px;
+      color: var(--ink);
+      background: #f4f4f4;
+      border-radius: 12px;
+      font-weight: 800;
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .photo-tile {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 1;
+      background: #f3f3f3;
+      border-radius: 16px;
+    }
+
+    .photo-tile img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-tile button {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 30px;
+      height: 30px;
+      color: #fff;
+      background: rgba(0, 0, 0, .54);
+      border-radius: 50%;
+    }
+
+    .empty-state {
+      display: grid;
+      min-height: 132px;
+      place-items: center;
+      margin-top: 14px;
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+      background: #fafafa;
+      border: 1px dashed #d7d7d7;
+      border-radius: 18px;
+    }
+
+    .split-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 4px 0 14px;
+    }
+
+    .check-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 34px;
+      padding: 0 10px;
+      color: var(--ink);
+      background: #f7f7f7;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .check-pill input {
+      width: auto;
+      min-height: auto;
+      accent-color: var(--brand);
+    }
+
+    .expense-list, .balance-list, .settlement-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .expense-item, .balance-item, .settlement-item {
+      display: grid;
+      gap: 5px;
+      padding: 12px;
+      background: #fafafa;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .expense-top, .balance-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .expense-top strong, .balance-top strong { overflow-wrap: anywhere; }
+    .money-positive { color: #0b7f43; }
+    .money-negative { color: #c13515; }
+    .tiny { color: var(--muted); font-size: 12px; }
+
+    .notes-status {
+      min-height: 22px;
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .footer {
+      margin: 54px clamp(18px, 5vw, 64px) 0;
+      padding-top: 24px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1080px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .search-pill {
+        order: 3;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .quick-nav {
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      .map-layout, .tools-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .sticky-panel {
+        position: static;
+      }
+
+      .day-list {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar { padding: 14px 16px; }
+      .search-pill span { padding: 12px 13px; font-size: 12px; }
+      .title-line { padding: 34px 16px 0; }
+      .section { padding: 42px 16px 0; }
+      .section-heading { display: block; }
+      .calendar-shell { padding: 10px; }
+      .calendar-weekdays { font-size: 10px; }
+      .day-card { min-height: 96px; padding: 8px; }
+      .day-card .date { font-size: 14px; }
+      .tag { margin-top: 30px; font-size: 10px; padding: 5px 7px; }
+      .form-row { grid-template-columns: 1fr; }
+      .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #tripMap { min-height: 520px; }
+      .timeline li { grid-template-columns: 62px 1fr; }
+    }
+  </style>
+</head>
+<body class="locked">
+  <div class="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+    <form class="gate-card" id="gateForm">
+      <h2 id="gateTitle">Hawaii 2026</h2>
+      <p>请输入访问码查看旅行 tracker。</p>
+      <div class="gate-actions">
+        <label>访问码
+          <input id="gateCode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••" autofocus>
+        </label>
+        <button class="primary-btn" type="submit">进入</button>
+        <div class="gate-error" id="gateError" aria-live="polite"></div>
+      </div>
+    </form>
+  </div>
+  <main id="top">
+    <section class="title-line">
+      <h1>Hawaii 2026.</h1>
+    </section>
+
+    <section class="section" id="schedule">
+      <div class="section-heading">
+        <div>
+          <h2>每日 Schedule</h2>
+          <p class="subtle">点击日历格查看当天详情，地图和路线会同步切换。</p>
+        </div>
+      </div>
+      <div class="calendar-shell">
+        <div class="calendar-month">
+          <strong>May 2026</strong>
+          <span class="subtle">Maui · Oahu · 11 days</span>
+        </div>
+        <div class="calendar-weekdays">
+          <span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
+        </div>
+        <div class="day-list" id="dayList"></div>
+      </div>
+      <aside class="panel calendar-detail" id="dayDetail"></aside>
+    </section>
+
+    <section class="section" id="map">
+      <div class="section-heading">
+        <div>
+          <h2>地点地图与路线</h2>
+          <p class="subtle">包含住宿、机场、活动点、备选景点和主要行车路线概览。</p>
+        </div>
+      </div>
+      <div class="grid map-layout">
+        <div id="tripMap" role="img" aria-label="Hawaii trip map"></div>
+        <aside class="panel">
+          <h3 style="margin-top:0">路线概览</h3>
+          <div class="route-list" id="routeList"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="expenses">
+      <div class="section-heading">
+        <div>
+          <h2>两人 Split 记账</h2>
+          <p class="subtle">只记录日期、内容和金额，自动按两个人平分。</p>
+        </div>
+      </div>
+      <div class="grid tools-grid">
+        <div class="panel">
+          <h3 style="margin-top:0">新增消费</h3>
+          <div class="form-row">
+            <label>日期
+              <select id="expenseDate"></select>
+            </label>
+            <label>金额 USD
+              <input id="expenseAmount" type="number" min="0" step="0.01" placeholder="0.00">
+            </label>
+          </div>
+          <label style="margin-bottom:12px">内容
+            <input id="expenseDesc" placeholder="例如：Haleakala 午饭">
+          </label>
+          <button class="primary-btn" id="addExpense" type="button">添加消费</button>
+        </div>
+
+        <div class="panel">
+          <h3 style="margin-top:0">两人平分</h3>
+          <div class="balance-list" id="balanceList"></div>
+          <h4>消费记录</h4>
+          <div class="expense-list" id="expenseList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="archive">
+      <div class="section-heading">
+        <div>
+          <h2>每日照片存档</h2>
+          <p class="subtle">上传的照片会保存在当前浏览器中，适合作为旅途轻量相册。</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="form-row">
+          <label>选择日期
+            <select id="photoDate"></select>
+          </label>
+          <label>上传照片
+            <input id="photoInput" type="file" accept="image/*" multiple>
+          </label>
+        </div>
+        <div class="photo-grid" id="photoGrid"></div>
+        <div class="empty-state" id="photoEmpty">这一天还没有照片。选几张照片，它们会出现在这里。</div>
+      </div>
+    </section>
+
+    <section class="section" id="notes">
+      <div class="section-heading">
+        <div>
+          <h2>每日关键备注</h2>
+          <p class="subtle">写下 gate、停车、餐厅、临时想法或当天复盘，自动保存。</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="form-row">
+          <label>选择日期
+            <select id="notesDate"></select>
+          </label>
+          <div class="notes-status" id="notesStatus"></div>
+        </div>
+        <textarea id="notesText" placeholder="例如：5/18 记得带外套，Haleakala 落日后会很冷。"></textarea>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Hawaii Homebase · 数据保存在本机浏览器 localStorage；换浏览器或清缓存前请先导出重要内容。
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const gateHash = "c5cc15b6430ca720613daef384c58149870660959a4ecbb76ba3b55ba02ad77e";
+    const gateKey = "hawaiiGateUnlocked";
+
+    async function sha256(text) {
+      const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return [...new Uint8Array(buffer)].map((value) => value.toString(16).padStart(2, "0")).join("");
+    }
+
+    function unlockGate() {
+      document.body.classList.remove("locked");
+      sessionStorage.setItem(gateKey, "true");
+    }
+
+    if (sessionStorage.getItem(gateKey) === "true") {
+      unlockGate();
+    }
+
+    document.getElementById("gateForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.getElementById("gateCode");
+      const error = document.getElementById("gateError");
+      if (await sha256(input.value.trim()) === gateHash) {
+        error.textContent = "";
+        unlockGate();
+      } else {
+        error.textContent = "访问码不正确。";
+        input.select();
+      }
+    });
+
+    const days = [
+      {
+        id: "2026-05-16", label: "5/16", weekday: "Sat", island: "Maui", title: "落地 + 转机 Maui",
+        summary: "3-4 点落地 Honolulu，转机 Maui，拿车去 Kihei 入住 Airbnb。",
+        vibe: "Arrival", places: ["HNL", "OGG", "Kihei Airbnb"],
+        timeline: [
+          ["15:00-16:00", "落地 Honolulu", "出站后准备转机 Maui。"],
+          ["Evening", "抵达 Maui + 取车", "在 Kahului Airport 拿车。"],
+          ["Night", "入住 Kihei Airbnb", "地址：938 South Kihei Road, Kihei。"]
+        ]
+      },
+      {
+        id: "2026-05-17", label: "5/17", weekday: "Sun", island: "Maui", title: "倒时差 + 周边探索",
+        summary: "全日 chill，没有硬安排，熟悉 Kihei 周边。",
+        vibe: "Reset", places: ["Kihei Airbnb"],
+        timeline: [
+          ["Morning", "自然醒", "补觉、买水和零食。"],
+          ["Afternoon", "周边探索", "Kihei 海边散步，找轻松午餐。"],
+          ["Evening", "早休息", "为 Haleakala 日程留体力。"]
+        ]
+      },
+      {
+        id: "2026-05-18", label: "5/18", weekday: "Mon", island: "Maui", title: "Haleakala 云海落日",
+        summary: "11 点左右出发，途中午饭，下午 hiking trail，落日看云海后返回。",
+        vibe: "Hiking", places: ["Kihei Airbnb", "Haleakala National Park"],
+        timeline: [
+          ["11:00", "从 Kihei 出发", "途中吃午饭，车程较长。"],
+          ["Afternoon", "Haleakala hiking trail", "注意高海拔和天气变化。"],
+          ["Sunset", "云海落日", "带外套，落日后温度会明显下降。"],
+          ["Night", "返回 Kihei", "山路夜间驾驶留足时间。"]
+        ]
+      },
+      {
+        id: "2026-05-19", label: "5/19", weekday: "Tue", island: "Maui", title: "农场 Tour",
+        summary: "12:00 PM Farm tour，地点在 Haiku-Pauwela。",
+        vibe: "Tour", places: ["Farm Tour", "Kihei Airbnb"],
+        timeline: [
+          ["10:15", "从 Kihei 出发", "预留海岸线和上坡路时间。"],
+          ["12:00", "Farm tour", "1189 Kokomo Road, Haiku-Pauwela。"],
+          ["Afternoon", "回程自由安排", "可顺路补给或吃饭。"]
+        ]
+      },
+      {
+        id: "2026-05-20", label: "5/20", weekday: "Wed", island: "Maui", title: "Marriott 附近浮潜",
+        summary: "Wailea/Marriott 附近浮潜，之后海边晒太阳。",
+        vibe: "Snorkel", places: ["Wailea Marriott", "Kihei Airbnb"],
+        timeline: [
+          ["Morning", "前往 Wailea", "带泳衣、防晒、毛巾和水。"],
+          ["Midday", "浮潜", "观察海况，注意 reef-safe 防晒。"],
+          ["Afternoon", "海边晒太阳", "轻松收尾 Maui 的最后整天。"]
+        ]
+      },
+      {
+        id: "2026-05-21", label: "5/21", weekday: "Thu", island: "Oahu", title: "Maui 到 Honolulu",
+        summary: "从 Maui 飞往 Honolulu，下午入住 Hyatt Waikiki。",
+        vibe: "Transfer", places: ["OGG", "HNL", "Hyatt Waikiki"],
+        timeline: [
+          ["Morning", "还车 + 飞 Oahu", "从 Maui 转场 Honolulu。"],
+          ["Afternoon", "入住 Hyatt Waikiki", "2424 Kalakaua Avenue, Honolulu。"],
+          ["Evening", "Waikiki 轻松逛", "熟悉酒店周边。"]
+        ]
+      },
+      {
+        id: "2026-05-22", label: "5/22", weekday: "Fri", island: "Oahu", title: "North Shore Zipline",
+        summary: "9:30 拿车出发，途中吃饭，12:20 zipline；回程看精力去 Diamond Head/Koko Crater。",
+        vibe: "Adventure", places: ["Hyatt Waikiki", "Zipline", "Diamond Head", "Koko Crater"],
+        timeline: [
+          ["09:30", "拿车出发", "从 Waikiki 前往 Kahuku。"],
+          ["11:00", "途中吃饭", "给 North Shore 交通留余量。"],
+          ["12:20", "Zipline", "56-380 Kamehameha Hwy Unit 58, Kahuku。"],
+          ["Return", "备选景点", "有精力可去 Diamond Head 或 Koko Crater。"]
+        ]
+      },
+      {
+        id: "2026-05-23", label: "5/23", weekday: "Sat", island: "Oahu", title: "海滩 chill + 逛街",
+        summary: "Waikiki 海滩放松，下午/晚上逛街。",
+        vibe: "Beach", places: ["Hyatt Waikiki"],
+        timeline: [
+          ["Morning", "Waikiki beach", "慢节奏补充体力。"],
+          ["Afternoon", "逛街", "Royal Hawaiian Center / International Market Place。"],
+          ["Evening", "自由晚餐", "把想吃的店写进备注。"]
+        ]
+      },
+      {
+        id: "2026-05-24", label: "5/24", weekday: "Sun", island: "Oahu", title: "保护区浮潜",
+        summary: "7:40 shuttle pick up 去保护区浮潜，1:10 PM 回来，下午休息。",
+        vibe: "Snorkel", places: ["Hyatt Waikiki", "Hanauma Bay"],
+        timeline: [
+          ["07:40", "Shuttle pick up", "提前准备泳衣、防晒、水。"],
+          ["Morning", "保护区浮潜", "很可能是 Hanauma Bay 方向。"],
+          ["13:10", "返回 Waikiki", "下午休息 + chill。"]
+        ]
+      },
+      {
+        id: "2026-05-25", label: "5/25", weekday: "Mon", island: "Oahu", title: "海滩 chill + 可选植物园",
+        summary: "海滩和逛街为主；可以临时租车去植物园。",
+        vibe: "Flexible", places: ["Hyatt Waikiki", "Ho'omaluhia Botanical Garden"],
+        timeline: [
+          ["Morning", "Beach time", "轻松安排，不赶行程。"],
+          ["Optional", "植物园", "如果想租车，可去 Ho'omaluhia Botanical Garden。"],
+          ["Evening", "整理行李", "确认返程交通和航班时间。"]
+        ]
+      },
+      {
+        id: "2026-05-26", label: "5/26", weekday: "Tue", island: "Return", title: "返程",
+        summary: "退房、前往机场、返程。",
+        vibe: "Departure", places: ["Hyatt Waikiki", "HNL"],
+        timeline: [
+          ["Morning", "退房准备", "检查证件、充电器、泳具。"],
+          ["TBD", "前往 HNL", "根据航班时间安排打车或租车还车。"],
+          ["Flight", "返程", "照片和账本可以在飞机上补齐。"]
+        ]
+      }
+    ];
+
+    const places = {
+      "HNL": { name: "Honolulu Airport", lat: 21.3245, lng: -157.9251, type: "Airport", address: "Daniel K. Inouye International Airport" },
+      "OGG": { name: "Kahului Airport", lat: 20.8986, lng: -156.4305, type: "Airport", address: "Maui airport" },
+      "Kihei Airbnb": { name: "Maui Airbnb", lat: 20.7585, lng: -156.4588, type: "Stay", address: "938 South Kihei Road, Kihei, HI 96753" },
+      "Farm Tour": { name: "Farm tour", lat: 20.9126, lng: -156.3211, type: "Activity", address: "1189 Kokomo Road, Haiku-Pauwela, HI 96708" },
+      "Haleakala National Park": { name: "Haleakala National Park", lat: 20.7204, lng: -156.1552, type: "Park", address: "Haleakala National Park, Maui" },
+      "Wailea Marriott": { name: "Wailea Marriott area", lat: 20.6908, lng: -156.4429, type: "Beach", address: "Wailea Beach / Marriott area" },
+      "Hyatt Waikiki": { name: "Hyatt Waikiki", lat: 21.2766, lng: -157.8244, type: "Stay", address: "2424 Kalakaua Avenue, Honolulu, HI 96815" },
+      "Zipline": { name: "North Shore Zipline", lat: 21.6677, lng: -157.9515, type: "Activity", address: "56-380 Kamehameha Hwy Unit 58, Kahuku, HI 96731" },
+      "Diamond Head": { name: "Diamond Head", lat: 21.2620, lng: -157.8050, type: "Optional", address: "Diamond Head State Monument" },
+      "Koko Crater": { name: "Koko Crater", lat: 21.2777, lng: -157.6899, type: "Optional", address: "Koko Crater Railway Trailhead" },
+      "Hanauma Bay": { name: "Hanauma Bay Nature Preserve", lat: 21.2690, lng: -157.6940, type: "Snorkel", address: "Hanauma Bay Nature Preserve" },
+      "Ho'omaluhia Botanical Garden": { name: "Ho'omaluhia Botanical Garden", lat: 21.3971, lng: -157.8090, type: "Optional", address: "45-680 Luluku Road, Kaneohe" }
+    };
+
+    const routePlans = {
+      "2026-05-16": [["Honolulu Airport", "Kahului Airport"], ["Kahului Airport", "938 South Kihei Road, Kihei, HI"]],
+      "2026-05-18": [["938 South Kihei Road, Kihei, HI", "Haleakala National Park, HI"]],
+      "2026-05-19": [["938 South Kihei Road, Kihei, HI", "1189 Kokomo Road, Haiku-Pauwela, HI"]],
+      "2026-05-20": [["938 South Kihei Road, Kihei, HI", "Wailea Beach Resort Marriott Maui"]],
+      "2026-05-21": [["Kahului Airport", "Daniel K. Inouye International Airport"], ["Daniel K. Inouye International Airport", "2424 Kalakaua Avenue, Honolulu, HI"]],
+      "2026-05-22": [["2424 Kalakaua Avenue, Honolulu, HI", "56-380 Kamehameha Hwy Unit 58, Kahuku, HI"], ["56-380 Kamehameha Hwy Unit 58, Kahuku, HI", "Diamond Head State Monument"]],
+      "2026-05-24": [["2424 Kalakaua Avenue, Honolulu, HI", "Hanauma Bay Nature Preserve"]],
+      "2026-05-25": [["2424 Kalakaua Avenue, Honolulu, HI", "Ho'omaluhia Botanical Garden"]]
+    };
+
+    const store = {
+      get(key, fallback) {
+        try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+        catch { return fallback; }
+      },
+      set(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+    };
+
+    let selectedDay = days[0].id;
+    let expenses = store.get("hawaiiExpenses", []);
+    let photos = store.get("hawaiiPhotos", {});
+    let notes = store.get("hawaiiNotes", {});
+    let map;
+    let markers = {};
+    let activeLine;
+
+    const qs = (id) => document.getElementById(id);
+    const money = (value) => `$${Number(value).toFixed(2)}`;
+    const currentDay = () => days.find((day) => day.id === selectedDay) || days[0];
+    const uid = () => window.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const splitPeople = ["Person 1", "Person 2"];
+
+    function init() {
+      renderDayControls();
+      populateDateSelects();
+      renderDayDetail();
+      initMap();
+      renderRoutes();
+      renderPhotos();
+      renderExpenses();
+      renderNotes();
+      wireEvents();
+    }
+
+    function renderDayControls() {
+      qs("dayList").innerHTML = days.map((day) => `
+        <button class="day-card ${day.id === selectedDay ? "active" : ""}" type="button" data-day="${day.id}">
+          <div class="date"><span>${day.label.replace("5/", "")}</span><span>${day.weekday}</span></div>
+          <span class="tag">${day.vibe}</span>
+        </button>
+      `).join("");
+
+      document.querySelectorAll("[data-day]").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectedDay = button.dataset.day;
+          ["photoDate", "expenseDate", "notesDate"].forEach((id) => {
+            if (qs(id)) qs(id).value = selectedDay;
+          });
+          renderDayControls();
+          renderDayDetail();
+          renderPhotos();
+          renderNotes();
+          renderRoutes();
+          focusMapForDay();
+        });
+      });
+    }
+
+    function populateDateSelects() {
+      const options = days.map((day) => `<option value="${day.id}">${day.label} ${day.weekday} · ${day.title}</option>`).join("");
+      ["photoDate", "expenseDate", "notesDate"].forEach((id) => {
+        qs(id).innerHTML = options;
+        qs(id).value = selectedDay;
+      });
+    }
+
+    function renderDayDetail() {
+      const day = currentDay();
+      qs("dayDetail").innerHTML = `
+        <div class="detail-title">
+          <div>
+            <div class="tiny">${day.label} · ${day.weekday} · ${day.island}</div>
+            <h3>${day.title}</h3>
+          </div>
+          <div class="mini-stat"><strong>${day.timeline.length}</strong><span class="tiny">items</span></div>
+        </div>
+        <p class="subtle">${day.summary}</p>
+        <ul class="timeline">
+          ${day.timeline.map((item) => `
+            <li><div class="time">${item[0]}</div><div><b>${item[1]}</b><span>${item[2]}</span></div></li>
+          `).join("")}
+        </ul>
+      `;
+    }
+
+    function initMap() {
+      if (!window.L) {
+        qs("tripMap").innerHTML = '<div class="empty-state">地图组件加载失败，但路线链接仍可使用。</div>';
+        return;
+      }
+
+      map = L.map("tripMap", { scrollWheelZoom: true }).setView([20.98, -156.85], 8);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      Object.entries(places).forEach(([key, place]) => {
+        const marker = L.circleMarker([place.lat, place.lng], {
+          radius: 8,
+          color: markerColor(place.type),
+          fillColor: markerColor(place.type),
+          fillOpacity: .9,
+          weight: 2
+        }).addTo(map);
+        marker.bindPopup(`<b>${place.name}</b><br>${place.type}<br>${place.address}`);
+        markers[key] = marker;
+      });
+
+      L.polyline([
+        [places["Kihei Airbnb"].lat, places["Kihei Airbnb"].lng],
+        [places["Haleakala National Park"].lat, places["Haleakala National Park"].lng],
+        [places["Farm Tour"].lat, places["Farm Tour"].lng],
+        [places["Wailea Marriott"].lat, places["Wailea Marriott"].lng],
+        [places["Kihei Airbnb"].lat, places["Kihei Airbnb"].lng]
+      ], { color: "#008489", weight: 3, opacity: .55, dashArray: "8 8" }).addTo(map);
+
+      L.polyline([
+        [places["Hyatt Waikiki"].lat, places["Hyatt Waikiki"].lng],
+        [places["Zipline"].lat, places["Zipline"].lng],
+        [places["Diamond Head"].lat, places["Diamond Head"].lng],
+        [places["Hanauma Bay"].lat, places["Hanauma Bay"].lng],
+        [places["Hyatt Waikiki"].lat, places["Hyatt Waikiki"].lng]
+      ], { color: "#ff7a1a", weight: 3, opacity: .55, dashArray: "8 8" }).addTo(map);
+
+      focusMapForDay();
+    }
+
+    function markerColor(type) {
+      return {
+        Stay: "#ff7a1a", Airport: "#5b5b5b", Activity: "#008489",
+        Park: "#2e7d32", Beach: "#ffb400", Optional: "#7b61ff", Snorkel: "#0077b6"
+      }[type] || "#222222";
+    }
+
+    function focusMapForDay() {
+      if (!map) return;
+      if (activeLine) map.removeLayer(activeLine);
+      const day = currentDay();
+      const latLngs = day.places.map((name) => places[name]).filter(Boolean).map((place) => [place.lat, place.lng]);
+      if (!latLngs.length) return;
+      if (latLngs.length > 1) {
+        activeLine = L.polyline(latLngs, { color: "#222222", weight: 4, opacity: .8 }).addTo(map);
+        map.fitBounds(L.latLngBounds(latLngs).pad(.42), { animate: true, maxZoom: 11 });
+      } else {
+        map.setView(latLngs[0], 12, { animate: true });
+      }
+      const firstPlace = places[day.places[0]];
+      if (firstPlace && markers[day.places[0]]) markers[day.places[0]].openPopup();
+    }
+
+    function renderRoutes() {
+      const day = currentDay();
+      const routes = routePlans[day.id] || [];
+      qs("routeList").innerHTML = routes.map((route, index) => {
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(route[0])}&destination=${encodeURIComponent(route[1])}`;
+        return `
+          <a class="route-card" href="${url}" target="_blank" rel="noopener">
+            <span class="route-icon">→</span>
+            <span><strong>${day.label} Route ${index + 1}</strong><span>${route[0]} → ${route[1]}</span></span>
+            <small>Open</small>
+          </a>
+        `;
+      }).join("") || '<div class="empty-state">这一天没有固定路线，适合自由安排。</div>';
+    }
+
+    function renderPhotos() {
+      const date = qs("photoDate").value || selectedDay;
+      const list = photos[date] || [];
+      qs("photoGrid").innerHTML = list.map((photo) => `
+        <div class="photo-tile">
+          <img src="${photo.data}" alt="${photo.name}">
+          <button type="button" aria-label="删除照片" data-photo-delete="${photo.id}">×</button>
+        </div>
+      `).join("");
+      qs("photoEmpty").style.display = list.length ? "none" : "grid";
+      document.querySelectorAll("[data-photo-delete]").forEach((button) => {
+        button.addEventListener("click", () => {
+          photos[date] = (photos[date] || []).filter((photo) => photo.id !== button.dataset.photoDelete);
+          store.set("hawaiiPhotos", photos);
+          renderPhotos();
+        });
+      });
+    }
+
+    function renderExpenses() {
+      const tripTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+      const perPerson = tripTotal / 2;
+
+      qs("balanceList").innerHTML = `
+        <div class="balance-item">
+          <div class="balance-top"><strong>Trip total</strong><strong>${money(tripTotal)}</strong></div>
+          <span class="tiny">${expenses.length} 条消费记录</span>
+        </div>
+        ${splitPeople.map((person) => `
+          <div class="balance-item">
+            <div class="balance-top">
+              <strong>${person}</strong>
+              <strong>${money(perPerson)}</strong>
+            </div>
+            <span class="tiny">当前人均支出</span>
+          </div>
+        `).join("")}
+      `;
+
+      qs("expenseList").innerHTML = expenses.slice().reverse().map((expense) => {
+        const day = days.find((item) => item.id === expense.date);
+        return `
+          <div class="expense-item">
+            <div class="expense-top">
+              <strong>${expense.desc}</strong>
+              <button class="ghost-btn" type="button" data-expense-delete="${expense.id}">删除</button>
+            </div>
+            <span class="tiny">${day ? day.label : expense.date} · total ${money(expense.amount)} · each ${money(Number(expense.amount || 0) / 2)}</span>
+          </div>
+        `;
+      }).join("") || '<div class="empty-state">还没有消费记录。</div>';
+
+      document.querySelectorAll("[data-expense-delete]").forEach((button) => {
+        button.addEventListener("click", () => {
+          expenses = expenses.filter((expense) => expense.id !== button.dataset.expenseDelete);
+          store.set("hawaiiExpenses", expenses);
+          renderExpenses();
+        });
+      });
+    }
+
+    function renderNotes() {
+      const date = qs("notesDate").value || selectedDay;
+      qs("notesText").value = notes[date] || "";
+      qs("notesStatus").textContent = "已载入当天备注";
+    }
+
+    function wireEvents() {
+      qs("photoDate").addEventListener("change", renderPhotos);
+      qs("photoInput").addEventListener("change", async (event) => {
+        const date = qs("photoDate").value;
+        const files = Array.from(event.target.files || []);
+        const reads = files.map((file) => new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ id: uid(), name: file.name, data: reader.result });
+          reader.readAsDataURL(file);
+        }));
+        photos[date] = [...(photos[date] || []), ...(await Promise.all(reads))];
+        try {
+          store.set("hawaiiPhotos", photos);
+        } catch {
+          alert("浏览器本地空间不够了。请删除一些照片，或只上传压缩后的图片。");
+        }
+        event.target.value = "";
+        renderPhotos();
+      });
+
+      qs("addExpense").addEventListener("click", () => {
+        const desc = qs("expenseDesc").value.trim();
+        const amount = Number(qs("expenseAmount").value);
+        if (!desc || !amount || amount <= 0) {
+          alert("请填写日期、内容和金额。");
+          return;
+        }
+        expenses.push({
+          id: uid(),
+          date: qs("expenseDate").value,
+          desc,
+          amount
+        });
+        store.set("hawaiiExpenses", expenses);
+        qs("expenseDesc").value = "";
+        qs("expenseAmount").value = "";
+        renderExpenses();
+      });
+
+      qs("notesDate").addEventListener("change", renderNotes);
+      qs("notesText").addEventListener("input", () => {
+        const date = qs("notesDate").value;
+        notes[date] = qs("notesText").value;
+        store.set("hawaiiNotes", notes);
+        qs("notesStatus").textContent = "已自动保存";
+        clearTimeout(window.notesTimer);
+        window.notesTimer = setTimeout(() => qs("notesStatus").textContent = "继续编辑会自动保存", 1500);
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
